@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { CHART_LOOKBACK_MS, VenueChart, candleMid, candleOhlc, fillKey } from "../src/chart";
 
-test("chart lookback is a week", () => {
-  expect(CHART_LOOKBACK_MS).toBe(7 * 24 * 60 * 60 * 1000);
+test("chart lookback is a month", () => {
+  expect(CHART_LOOKBACK_MS).toBe(31 * 24 * 60 * 60 * 1000);
 });
 
 test("candleOhlc keeps the venue bar and fills missing sides from close", () => {

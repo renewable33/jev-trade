@@ -137,5 +137,19 @@ export function aggregateFills(fills: Fill[]): Fill {
   const size = same.reduce((s, f) => s + f.size, 0);
   const price = same.reduce((s, f) => s + f.size * f.price, 0) / size;
   const round4 = (x: number) => Math.round(x * 1e4) / 1e4;
-  return { side, size: round4(size), price, txHash: same[0]!.txHash, orderId: same[0]!.orderId, simulated: same[0]!.simulated, dir: same[0]!.dir };
+  const closed = same.reduce((s, f) => s + (typeof f.closedPnl === "number" ? f.closedPnl : 0), 0);
+  const fee = same.reduce((s, f) => s + (typeof f.feeUsd === "number" ? f.feeUsd : 0), 0);
+  const hasClosed = same.some((f) => typeof f.closedPnl === "number");
+  const hasFee = same.some((f) => typeof f.feeUsd === "number");
+  return {
+    side,
+    size: round4(size),
+    price,
+    txHash: same[0]!.txHash,
+    orderId: same[0]!.orderId,
+    simulated: same[0]!.simulated,
+    dir: same[0]!.dir,
+    ...(hasClosed ? { closedPnl: closed } : {}),
+    ...(hasFee ? { feeUsd: fee } : {}),
+  };
 }

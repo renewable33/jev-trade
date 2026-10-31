@@ -122,16 +122,20 @@
       max(14px, env(safe-area-inset-left, 0px));
   }
 
+  .tagline {
+    display: block;
+    flex: 1 1 100%;
+    white-space: normal;
+    font-size: 11px;
+  }
+
   .brandLockup {
-    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
   }
 
   .brand {
     font-size: 13px;
-  }
-
-  .tagline {
-    display: none;
   }
 
   .status {

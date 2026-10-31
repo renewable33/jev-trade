@@ -108,6 +108,7 @@ class FakeMarket {
   cancels = 0;
   sendDelayMs = 0;
   candleCloses() { return []; }
+  rangeCloses() { return []; }
   refresh() { return Promise.resolve(); }
   readBook() { return book; }
   quoteSize() { return 0.01; }

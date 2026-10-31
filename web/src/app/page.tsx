@@ -10,10 +10,12 @@ import SleeveStrip from "@/components/SleeveStrip/SleeveStrip";
 import { lastMeaningfulCall } from "@/lib/format";
 import { portfolioBalance, portfolioPnl } from "@/lib/pnl";
 import { useFeed } from "@/lib/useFeed";
+import { useBtcUsdt } from "@/lib/useBtcUsdt";
 import type { BlockEvent, Meta, SleeveFeed } from "@/lib/types";
 import styles from "./page.module.css";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+// Empty means same-origin (/snapshot, /events, /tape), proxied to the bot.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const EMPTY: SleeveFeed = { events: [], tape: [], latest: null, avgLatencyMs: 0 };
 
@@ -31,6 +33,7 @@ function viewMeta(meta: Meta | null, coin: string): Meta | null {
 
 export default function Page() {
   const feed = useFeed(API_URL);
+  const btcUsdt = useBtcUsdt();
   const [picked, setPicked] = useState<string | null>(null);
 
   const coins = useMemo(() => {
@@ -75,6 +78,12 @@ export default function Page() {
         balance={hasBooks ? balance : null}
         unrealized={hasBooks ? pnl.unrealized : null}
         realized={hasBooks ? pnl.realized : null}
+        mode={
+          feed.meta
+            ? `${feed.meta.dryRun ? "Dry run" : "Live orders"} · ${feed.meta.model || "mock"} · no wallet`
+            : "Connecting"
+        }
+        btcUsdt={btcUsdt}
       />
       <SleeveStrip
         sleeves={feed.meta?.sleeves ?? []}
@@ -92,6 +101,7 @@ export default function Page() {
               events={sleeve.events}
               latest={sleeve.latest}
               meta={meta}
+              btcUsdt={btcUsdt}
               onNeedMoreTape={feed.loadTape}
             />
           </div>

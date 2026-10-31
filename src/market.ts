@@ -31,7 +31,7 @@ export class Market {
   private lastSize = 0;
   private lastReduce = false;
   private fills = new FillPnlBook();
-  readonly fillPrints: { ts: number; side: Side; price: number; size: number; dir?: Fill["dir"]; hash?: string }[] = [];
+  readonly fillPrints: { ts: number; side: Side; price: number; size: number; dir?: Fill["dir"]; hash?: string; closedPnl?: number; feeUsd?: number }[] = [];
   onVenueFill: ((fill: { ts: number; side: Side; price: number; size: number; dir?: Fill["dir"]; hash?: string }) => void) | null = null;
 
   get chartPoints() {
@@ -44,6 +44,13 @@ export class Market {
 
   candleCloses(limit = 80) {
     return this.feed.chart.closes(limit);
+  }
+
+  /** Closed 15m bars when the venue has them, otherwise closed 1m bars. */
+  rangeCloses(now = Date.now()): number[] {
+    const slow = this.feed.chart.closedCloses("15m", now, 400);
+    if (slow.length >= 30) return slow;
+    return this.feed.chart.closedCloses("1m", now, 400);
   }
 
   constructor(private feed: Feed, sleeve: SleeveConfig) {
@@ -110,6 +117,25 @@ export class Market {
   applyClearinghouse(state: ClearinghouseLike) {
     this.account = this.fills.apply(accountFromClearinghouse(state, this.coin, this.account));
     this.margin.usdc = this.account.withdrawable;
+  }
+
+  /** A dry-run fill. Live venue fills already arrive through `noteFill`. */
+  markSimFill(fill: Fill, ts: number): boolean {
+    if (!fill.simulated) return false;
+    if (!(ts > 0) || !(fill.price > 0) || !(fill.size > 0)) return false;
+    const print = {
+      ts,
+      side: fill.side,
+      price: fill.price,
+      size: fill.size,
+      dir: fill.dir,
+      ...(fill.txHash ? { hash: fill.txHash } : {}),
+      ...(typeof fill.closedPnl === "number" ? { closedPnl: fill.closedPnl } : {}),
+      ...(typeof fill.feeUsd === "number" ? { feeUsd: fill.feeUsd } : {}),
+    };
+    const added = this.feed.chart.addFill(print);
+    if (added) this.fillPrints.push(print);
+    return added;
   }
 
   noteFill(fill: FillPnlLike) {

@@ -3,7 +3,7 @@ import type { PricePoint } from "./bot-types";
 export const SECOND_MS = 1000;
 export const MINUTE_MS = 60_000;
 export const M15_MS = 15 * 60_000;
-export type BarSize = "1s" | "1m" | "5m" | "15m" | "1H";
+export type BarSize = "1s" | "1m" | "5m" | "15m" | "30m" | "1H";
 
 export type Candle = {
   time: number;
@@ -21,6 +21,7 @@ export type FillMark = {
 export function barMs(bar: BarSize): number {
   if (bar === "1s") return SECOND_MS;
   if (bar === "1H") return 60 * MINUTE_MS;
+  if (bar === "30m") return 30 * MINUTE_MS;
   if (bar === "15m") return M15_MS;
   if (bar === "5m") return 5 * MINUTE_MS;
   return MINUTE_MS;
@@ -85,11 +86,11 @@ export function barsForView(tape: PricePoint[], bar: BarSize): Candle[] {
   if (bar === "1s") return aggregateBars(tagged1s, "1s");
   if (bar === "1m") return aggregateBars(m1, "1m");
   if (bar === "5m") return aggregateBars(m1, "5m");
-  if (bar === "1H") {
-    const from1 = aggregateBars(m1, "1H");
-    if (!from1.length) return aggregateBars(tagged15, "1H");
+  if (bar === "30m" || bar === "1H") {
+    const from1 = aggregateBars(m1, bar);
+    if (!from1.length) return aggregateBars(tagged15, bar);
     const first = from1[0]!.time;
-    const older = aggregateBars(tagged15, "1H").filter((c) => c.time < first);
+    const older = aggregateBars(tagged15, bar).filter((c) => c.time < first);
     return older.concat(from1);
   }
   const from1m = aggregateBars(m1, "15m");

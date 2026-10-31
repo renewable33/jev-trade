@@ -24,3 +24,14 @@ test("aggregateFills keeps the heavier side", () => {
   expect(fill.size).toBeCloseTo(0.003, 8);
   expect(fill.price).toBe(11);
 });
+
+test("aggregateFills keeps close pnl and direction", () => {
+  const fill = aggregateFills([
+    { side: "buy", size: 0.01, price: 100, txHash: null, orderId: 1, simulated: true, dir: "close", closedPnl: 1.25, feeUsd: 0.02 },
+    { side: "buy", size: 0.01, price: 101, txHash: null, orderId: 2, simulated: true, dir: "close", closedPnl: 0.75, feeUsd: 0.01 },
+  ]);
+  expect(fill.dir).toBe("close");
+  expect(fill.closedPnl).toBeCloseTo(2, 8);
+  expect(fill.feeUsd).toBeCloseTo(0.03, 8);
+  expect(fill.size).toBeCloseTo(0.02, 8);
+});

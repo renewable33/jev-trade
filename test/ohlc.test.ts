@@ -46,6 +46,19 @@ test("barsForView 1s uses only 1s prints", () => {
   ]);
 });
 
+test("barsForView 30m rolls 15m candles", () => {
+  const half = 30 * 60 * 1000;
+  const tape: PricePoint[] = [
+    { ts: 0, mid: 100, open: 100, high: 101, low: 99, close: 100, bar: "15m" },
+    { ts: 15 * 60 * 1000, mid: 104, open: 100, high: 105, low: 100, close: 104, bar: "15m" },
+    { ts: half, mid: 98, open: 104, high: 104, low: 97, close: 98, bar: "15m" },
+  ];
+  expect(barsForView(tape, "30m")).toEqual([
+    { time: 0, open: 100, high: 105, low: 99, close: 104 },
+    { time: half / 1000, open: 104, high: 104, low: 97, close: 98 },
+  ]);
+});
+
 test("barsForView 1H rolls 15m candles", () => {
   const hour = 60 * 60 * 1000;
   const tape: PricePoint[] = [

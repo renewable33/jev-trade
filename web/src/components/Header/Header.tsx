@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtSignedUsd, fmtUsd } from "@/lib/format";
+import { fmtPrice, fmtSignedUsd, fmtUsd } from "@/lib/format";
 import Logo from "@/components/Logo/Logo";
 import { Bone } from "@/components/Skeleton/Skeleton";
 import styles from "./Header.module.css";
@@ -10,23 +10,28 @@ export interface HeaderProps {
   balance: number | null;
   unrealized: number | null;
   realized: number | null;
+  mode?: string;
+  btcUsdt?: number | null;
 }
 
 function Score({
   label,
   value,
   signed = true,
+  price = false,
 }: {
   label: string;
   value: number | null;
   signed?: boolean;
+  price?: boolean;
 }) {
   const color = !signed || value == null ? undefined : value >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)";
+  const text = value == null ? null : price ? fmtPrice(value) : signed ? fmtSignedUsd(value, 2) : fmtUsd(value, 2);
   return (
     <span className={styles.score}>
       <span className={styles.scoreKey}>{label}</span>
       <span className={styles.scoreVal} style={color ? { color } : undefined}>
-        {value == null ? <Bone w={64} h={16} /> : signed ? fmtSignedUsd(value, 2) : fmtUsd(value, 2)}
+        {text == null ? <Bone w={64} h={16} /> : text}
       </span>
     </span>
   );
@@ -43,15 +48,16 @@ function GitHubMark() {
   );
 }
 
-export default function Header({ connection, balance, unrealized, realized }: HeaderProps) {
+export default function Header({ connection, balance, unrealized, realized, mode, btcUsdt = null }: HeaderProps) {
   const live = connection === "live";
+  const btc = btcUsdt;
 
   return (
     <div className={styles.header}>
       <span className={styles.brandLockup}>
         <Logo size={20} />
         <h1 className={styles.brand}>Jev Trade</h1>
-        <p className={styles.tagline}>Live Jev trading bot</p>
+        <p className={styles.tagline}>{mode || "Live Jev trading bot"}</p>
         <span className={styles.links}>
           <a
             className={styles.link}
@@ -69,6 +75,7 @@ export default function Header({ connection, balance, unrealized, realized }: He
         <span>{live ? "Live" : "Offline"}</span>
       </span>
       <span className={styles.scores}>
+        <Score label="BTCUSDT" value={btc} signed={false} price />
         <Score label="balance" value={balance} signed={false} />
         <Score label="unrealized" value={unrealized} />
         <Score label="realized" value={realized} />

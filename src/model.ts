@@ -56,6 +56,8 @@ export interface TradeState {
     maxLeverage: number;
   };
   maxLeverage: number;
+  /** Range Filter [DW] on closed candles. Null until enough bars exist. */
+  rangeFilter: { filter: number; dir: -1 | 0 | 1 } | null;
 }
 
 export interface ModelDecision {
@@ -203,6 +205,25 @@ interface Packed {
   holdP: number;
   latencyMs: number;
   inputTokens: number;
+}
+
+/** Buy when the filter is rising and price is above it. Sell when it is falling and price is below it. */
+export function rangeFilterCall(
+  snap: { filter: number; dir: -1 | 0 | 1 } | null,
+  close: number,
+  positionSide: "long" | "short" | "flat",
+): { intent: Intent; bias: Bias } {
+  const bull = !!snap && snap.dir === 1 && close > snap.filter;
+  const bear = !!snap && snap.dir === -1 && close < snap.filter;
+  if (bull) {
+    const intent: Intent = positionSide === "short" ? "close" : positionSide === "flat" ? "open" : "hold";
+    return { intent: liveIntent(positionSide, intent), bias: "long" };
+  }
+  if (bear) {
+    const intent: Intent = positionSide === "long" ? "close" : positionSide === "flat" ? "open" : "hold";
+    return { intent: liveIntent(positionSide, intent), bias: "short" };
+  }
+  return { intent: "hold", bias: positionSide === "short" ? "short" : "long" };
 }
 
 function pack(o: Packed): ModelDecision {
@@ -367,43 +388,32 @@ export class JevModel implements Model {
   }
 }
 
-/** Deterministic stand-in: momentum + imbalance. Jev-shaped open/close/hold/long/short/leverage. */
+/** Deterministic stand-in: Range Filter [DW] trend. Long above a rising filter, short below a falling one. */
 export class MockModel implements Model {
-  readonly name = "mock";
+  readonly name = "range-filter";
 
   async decide(state: TradeState): Promise<ModelDecision> {
     const t0 = performance.now();
-    const flow = state.trades.buySz + state.trades.sellSz ? state.trades.cvdSz / (state.trades.buySz + state.trades.sellSz) : 0;
-    const signal = state.returnsBps.last20 / 8 + state.bookImbalance * 1.5 + flow * 2 + this.noise(state.tick);
-    const longP = 1 / (1 + Math.exp(-signal));
-    const bias: Bias = longP >= 0.5 ? "long" : "short";
-    const against = (bias === "long" && state.position.side === "short") || (bias === "short" && state.position.side === "long");
-    // A weak signal is not worth a round trip, so stand down instead of forcing a side.
-    const weak = Math.abs(signal) < 0.35;
-    const picked: Intent = against ? "close" : weak ? "hold" : "open";
-    const intent = liveIntent(state.position.side, picked);
+    const call = rangeFilterCall(state.rangeFilter, state.mid, state.position.side);
+    const intent = call.intent;
+    const bias = call.bias;
     const holdP = intent === "hold" ? 0.7 : 0.15;
     const closeP = intent === "close" ? 0.7 : 0.15;
-    const leverage = parseLeverage(1 + Math.abs(signal) * 8, state.maxLeverage, state.position.leverage ?? 1);
-    await Bun.sleep(80);
+    const openP = intent === "open" ? 0.7 : 0.15;
+    const longP = bias === "long" ? 0.7 : 0.3;
+    const leverage = parseLeverage(3, state.maxLeverage, state.position.leverage ?? 3);
     return pack({
       intent,
       bias,
       leverage,
       longP,
       shortP: 1 - longP,
-      openP: Math.max(0, 1 - holdP - closeP),
+      openP,
       closeP,
       holdP,
       latencyMs: performance.now() - t0,
-      inputTokens: Math.round(JSON.stringify(state).length / 4),
+      inputTokens: 0,
     });
-  }
-
-  private noise(tick: number) {
-    let h = tick * 2654435761 >>> 0;
-    h ^= h >>> 15; h = (h * 2246822519) >>> 0; h ^= h >>> 13;
-    return ((h % 1000) / 1000 - 0.5) * 3;
   }
 }
 

@@ -15,6 +15,7 @@ const INTERVALS: { id: BarSize; label: string }[] = [
   { id: "1m", label: "1m" },
   { id: "5m", label: "5m" },
   { id: "15m", label: "15m" },
+  { id: "30m", label: "30m" },
   { id: "1H", label: "1H" },
 ];
 
@@ -26,12 +27,14 @@ export default function FlowChart({
   events,
   latest,
   meta,
+  btcUsdt = null,
   onNeedMoreTape,
 }: {
   tape?: PricePoint[];
   events: BlockEvent[];
   latest: BlockEvent | null;
   meta?: Meta | null;
+  btcUsdt?: number | null;
   onNeedMoreTape?: () => void;
 }) {
   const [interval, setIntervalId] = useState<BarSize>(DEFAULT_INTERVAL);
@@ -69,6 +72,8 @@ export default function FlowChart({
           : "var(--ink)";
   const lastPx = shown?.mid ?? model?.candles.at(-1)?.close;
   const coin = meta?.coin ?? "BTC";
+  const spot = coin === "BTC" && btcUsdt != null && btcUsdt > 0 ? btcUsdt : null;
+  const shownPx = spot ?? lastPx;
   const pos = shown?.position;
   const entry =
     pos && pos.side !== "flat" && pos.entryPrice != null && pos.entryPrice > 0
@@ -110,9 +115,10 @@ export default function FlowChart({
               formatPrice={fmtPrice}
             />
             <div className={styles.tl}>
-              <div className={styles.price}>{fmtPrice(lastPx)}</div>
+              <div className={styles.price}>{fmtPrice(shownPx)}</div>
               <div className={styles.sub}>
-                <span>{meta?.pair ?? "BTC-USD"}</span>
+                <span>{spot ? "BTCUSDT" : meta?.pair ?? "BTC-USD"}</span>
+                {spot && lastPx != null ? <span>book {fmtPrice(lastPx)}</span> : null}
                 <span>{interval}</span>
                 <span className={styles.wordMobile} style={{ color: wordColor }}>
                   {word}

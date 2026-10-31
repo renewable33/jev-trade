@@ -5,7 +5,7 @@ const INFO_URL = (testnet: boolean) =>
   testnet ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 
 export const CHART_INTERVAL = "1m";
-export const CHART_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export const CHART_LOOKBACK_MS = 31 * 24 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 const SECOND_MS = 1000;
 const MAX_CANDLES = 5000;
@@ -75,6 +75,15 @@ export class VenueChart {
   private seen = new Set<string>();
   private cached: PricePoint[] = [];
   private dirty = true;
+
+  /** Completed candles only. The forming bar is left out so a signal does not repaint. */
+  closedCloses(bar: "1m" | "15m", now: number, limit = 400): number[] {
+    const map = bar === "15m" ? this.candles15m : this.candles1m;
+    const size = bar === "15m" ? 15 * 60 * 1000 : 60 * 1000;
+    const openBucket = Math.floor(now / size) * size;
+    const times = [...map.keys()].filter((t) => t < openBucket).sort((a, b) => a - b);
+    return times.slice(-Math.max(1, limit)).map((ts) => map.get(ts)!.close);
+  }
 
   closes(limit = 80): number[] {
     const times = [...this.candles1m.keys()].sort((a, b) => a - b);

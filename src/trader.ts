@@ -1,10 +1,11 @@
 import { config } from "./config";
-import { bpsBetween, snapshotIndicators, venueFeatures } from "./indicators";
+import { bpsBetween, rangeFilter, snapshotIndicators, venueFeatures } from "./indicators";
 import type { Market } from "./market";
 import type { Model, ModelDecision, TradeState } from "./model";
 import { planQuote, type QuotePlan } from "./plan";
 import { aggregateFills, emptySummary, takeLiveFills, takeSimFills, type Resting, type TradeFeed } from "./trades";
 import type { BlockEvent, Book, Fill, PricePoint, Quote, Side, Timing, Totals } from "./types";
+import type { PaperSleeve } from "./ledger";
 
 const emptyTotals = (): Totals => ({
   blocks: 0, decisions: 0, quotes: 0, fills: 0, reverted: 0, lateBlocks: 0,
@@ -36,12 +37,14 @@ export class Trader {
   private position = { sz: 0, costUsd: 0 };
   private totals: Totals = emptyTotals();
   private jevPauseUntil = 0;
+  private lastLeverage: number | null = null;
+  onPersist: ((book: PaperSleeve) => void) | null = null;
 
   constructor(
     private market: Market,
     private model: Model,
     private onEvent: (e: BlockEvent, timing?: Timing) => void,
-    private onFill: (block: number, fill: Fill) => void = () => {},
+    private onFill: (block: number, fill: Fill, ts?: number) => void = () => {},
     private onQuote: (block: number, quote: Quote) => void = () => {},
   ) {}
 
@@ -51,6 +54,54 @@ export class Trader {
 
   attachTradeFeed(feed: TradeFeed) {
     this.trades = feed;
+  }
+
+  /** Put a saved paper book back. Fills go on the tape; size is not applied twice. */
+  restore(saved: PaperSleeve) {
+    this.position = { sz: saved.sz, costUsd: saved.costUsd };
+    this.totals.realizedUsd = saved.realizedUsd;
+    this.totals.gasUsd = saved.gasUsd;
+    this.totals.fills = saved.fills.length;
+    this.lastLeverage = saved.leverage;
+    for (const f of saved.fills) {
+      this.market.markSimFill({
+        side: f.side,
+        size: f.size,
+        price: f.price,
+        txHash: f.hash ?? null,
+        orderId: 0,
+        simulated: true,
+        dir: f.dir,
+        ...(f.closedPnl != null ? { closedPnl: f.closedPnl } : {}),
+        ...(f.feeUsd != null ? { feeUsd: f.feeUsd } : {}),
+      }, f.ts);
+    }
+    try {
+      const book = this.market.readBook();
+      if (book?.mid > 0) this.emit(0, book, null, null, false);
+    } catch {
+      // the next tick paints the position
+    }
+  }
+
+  exportBook(): PaperSleeve {
+    return {
+      sz: this.position.sz,
+      costUsd: this.position.costUsd,
+      realizedUsd: this.totals.realizedUsd,
+      gasUsd: this.totals.gasUsd,
+      leverage: this.lastLeverage,
+      fills: this.market.fillPrints.map((f) => ({
+        ts: f.ts,
+        side: f.side,
+        price: f.price,
+        size: f.size,
+        ...(f.dir ? { dir: f.dir } : {}),
+        ...(f.hash ? { hash: f.hash } : {}),
+        ...(typeof f.closedPnl === "number" ? { closedPnl: f.closedPnl } : {}),
+        ...(typeof f.feeUsd === "number" ? { feeUsd: f.feeUsd } : {}),
+      })),
+    };
   }
 
   async onBlock(block: number) {
@@ -190,8 +241,12 @@ export class Trader {
 
   private recordFill(block: number, fill: Fill) {
     const e = this.history.find((h) => h.block === block);
+    const ts = e?.ts && e.ts > 0 ? e.ts : Date.now();
     if (e) e.fill = fill;
-    this.onFill(block, fill);
+    // Dry-run fills never hit the venue tape. History and the chart marks read that tape.
+    if (fill.simulated && typeof this.market.markSimFill === "function") this.market.markSimFill(fill, ts);
+    this.onFill(block, fill, ts);
+    this.persist();
   }
 
   private restingSz(side: Side) {
@@ -242,6 +297,7 @@ export class Trader {
       indicators,
       asset: { ...asset, maxLeverage: this.market.maxLeverage },
       maxLeverage: this.market.maxLeverage,
+      rangeFilter: rangeFilter(this.market.rangeCloses()),
     };
   }
 
@@ -251,15 +307,22 @@ export class Trader {
     this.totals.fills++;
     const signed = f.side === "buy" ? f.size : -f.size;
     const p = this.position;
-    if (p.sz === 0 || Math.sign(p.sz) === Math.sign(signed)) {
+    const before = p.sz;
+    if (before === 0 || Math.sign(before) === Math.sign(signed)) {
+      f.dir = f.dir ?? "open";
       p.costUsd += signed * f.price;
     } else {
-      const closing = Math.min(Math.abs(signed), Math.abs(p.sz)) * Math.sign(signed);
+      const closingMag = Math.min(Math.abs(signed), Math.abs(before));
+      const closing = closingMag * Math.sign(signed);
       const entry = p.costUsd / p.sz;
-      this.totals.realizedUsd += -closing * (f.price - entry);
+      const closedPnl = -closing * (f.price - entry);
+      this.totals.realizedUsd += closedPnl;
+      if (f.closedPnl == null) f.closedPnl = closedPnl;
       p.costUsd += closing * entry;
       const remainder = signed - closing;
       p.costUsd += remainder * f.price;
+      const flipped = Math.abs(signed) > Math.abs(before) + 1e-12;
+      f.dir = f.dir ?? (flipped ? "flip" : "close");
     }
     p.sz += signed;
     if (Math.abs(p.sz) < 1e-9) { p.sz = 0; p.costUsd = 0; }
@@ -311,7 +374,7 @@ export class Trader {
         side: this.position.sz > 0 ? "long" : this.position.sz < 0 ? "short" : "flat",
         size,
         entryPrice: this.entryPrice(),
-        leverage: a?.leverage ?? decision?.leverage ?? null,
+        leverage: a?.leverage ?? decision?.leverage ?? this.lastLeverage,
         unrealizedUsd: round(unrealized, 6),
         unrealizedSz: round(unrealized / book.mid, 8),
       },
@@ -321,7 +384,13 @@ export class Trader {
     };
     this.history.push(event);
     if (this.history.length > config.historySize) this.history.shift();
+    if (decision?.leverage) this.lastLeverage = decision.leverage;
     this.onEvent(event, timing);
+  }
+
+  private persist() {
+    if (!this.onPersist) return;
+    try { this.onPersist(this.exportBook()); } catch (e) { console.error("paper book:", (e as Error).message); }
   }
 }
 

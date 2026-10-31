@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { parseAssetCtx, rsi, sma, snapshotIndicators, venueFeatures } from "../src/indicators";
+import { parseAssetCtx, rangeFilter, rsi, sma, snapshotIndicators, venueFeatures } from "../src/indicators";
+import { rangeFilterCall } from "../src/model";
 
 test("sma and rsi on a rising series", () => {
   const xs = Array.from({ length: 20 }, (_, i) => 100 + i);
@@ -15,6 +16,29 @@ test("snapshotIndicators sits mid-range on a flat tape", () => {
   expect(snap.rsi14).toBe(50);
   expect(snap.rangePos20).toBe(0.5);
   expect(snap.midVsSma20Bps).toBe(0);
+});
+
+test("range filter follows a ramp and stays flat on a dead tape", () => {
+  const flat = rangeFilter(Array.from({ length: 80 }, () => 100));
+  expect(flat?.dir).toBe(0);
+  expect(flat?.filter).toBe(100);
+  const up = rangeFilter(Array.from({ length: 80 }, (_, i) => 100 + i * 0.5));
+  expect(up?.dir).toBe(1);
+  expect(100 + 79 * 0.5).toBeGreaterThan(up!.filter);
+  const down = rangeFilter(Array.from({ length: 80 }, (_, i) => 200 - i * 0.5));
+  expect(down?.dir).toBe(-1);
+  expect(200 - 79 * 0.5).toBeLessThan(down!.filter);
+});
+
+test("range filter call buys a rising filter and sells a falling one", () => {
+  const bull = { filter: 100, dir: 1 as const };
+  const bear = { filter: 100, dir: -1 as const };
+  expect(rangeFilterCall(bull, 101, "flat")).toEqual({ intent: "open", bias: "long" });
+  expect(rangeFilterCall(bull, 101, "long")).toEqual({ intent: "hold", bias: "long" });
+  expect(rangeFilterCall(bear, 99, "long")).toEqual({ intent: "close", bias: "short" });
+  expect(rangeFilterCall(bear, 99, "flat")).toEqual({ intent: "open", bias: "short" });
+  expect(rangeFilterCall(bull, 99, "flat")).toEqual({ intent: "hold", bias: "long" });
+  expect(rangeFilterCall(null, 100, "short")).toEqual({ intent: "hold", bias: "short" });
 });
 
 test("parseAssetCtx and venueFeatures read Hyperliquid ctx", () => {

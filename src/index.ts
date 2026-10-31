@@ -6,14 +6,21 @@ import { loadSleeves } from "./sleeves";
 import { startServer, type SleeveView } from "./server";
 import { Trader } from "./trader";
 import type { BlockEvent, Fill, Meta, Quote, Timing } from "./types";
+import { loadPaperBook, savePaperBook, type PaperSleeve } from "./ledger";
 
 const specs = loadSleeves();
 if (!specs.length) throw new Error("no sleeves");
 
+const paper = loadPaperBook();
+const remember = (coin: string, row: PaperSleeve) => {
+  paper.sleeves[coin] = row;
+  savePaperBook(paper);
+};
+
 const views: SleeveView[] = [];
 const first = specs[0]!;
 const meta: Meta = {
-  model: config.model,
+  model: config.model === "jev" ? "jev" : "range-filter",
   wallet: null,
   dryRun: config.dryRun || specs.every((s) => !s.privateKey),
   market: first.pair,
@@ -54,6 +61,9 @@ for (const spec of specs) {
         onQuote(spec.coin),
       );
       trader.attachTradeFeed(feed.trades);
+      const saved = paper.sleeves[spec.coin];
+      if (saved && (saved.sz !== 0 || saved.fills.length)) trader.restore(saved);
+      trader.onPersist = (row) => remember(spec.coin, row);
       market.onVenueFill = (p) => {
         server?.broadcastFill(spec.coin, 0, {
           side: p.side,
@@ -109,9 +119,10 @@ function onEvent(coin: string) {
 }
 
 function onFill(coin: string) {
-  return (block: number, fill: Fill) => {
+  return (block: number, fill: Fill, ts?: number) => {
     const kind = fill.dir === "open" ? "OPEN " : fill.dir === "close" ? "CLOSE " : fill.dir === "flip" ? "FLIP " : "";
     console.log(`${coin} #${block} ${kind}FILL ${fill.side} ${fill.size} @ ${fill.price}${fill.simulated ? " (sim)" : ""}`);
+    if (fill.simulated) server?.broadcastFill(coin, block, fill, ts);
   };
 }
 

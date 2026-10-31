@@ -133,6 +133,39 @@ export function parseAssetCtx(raw: unknown): AssetCtx {
   };
 }
 
+/** Donovan Wall Range Filter [DW], Type 1, Close, Average Change. Defaults match the published script. */
+export function rangeFilter(
+  closes: number[],
+  period = 14,
+  qty = 2.618,
+  smoothPeriod = 27,
+): { filter: number; dir: -1 | 0 | 1 } | null {
+  if (closes.length < 3) return null;
+  const alphaC = 2 / (period + 1);
+  const alphaR = 2 / (smoothPeriod + 1);
+  let emaChange: number | null = null;
+  let emaRange: number | null = null;
+  let filt = closes[0]!;
+  let prev = filt;
+  let dir: -1 | 0 | 1 = 0;
+  for (let i = 1; i < closes.length; i++) {
+    const close = closes[i]!;
+    const change = Math.abs(close - closes[i - 1]!);
+    emaChange = emaChange == null ? change : emaChange + (change - emaChange) * alphaC;
+    const raw = emaChange * qty;
+    emaRange = emaRange == null ? raw : emaRange + (raw - emaRange) * alphaR;
+    const r = emaRange;
+    prev = filt;
+    if (r > 0) {
+      if (close - r > prev) filt = close - r;
+      if (close + r < prev) filt = close + r;
+    }
+    if (filt > prev) dir = 1;
+    else if (filt < prev) dir = -1;
+  }
+  return { filter: filt, dir };
+}
+
 export function venueFeatures(ctx: AssetCtx | null, mid: number) {
   const c = ctx ?? emptyCtx();
   return {
