@@ -1,4 +1,5 @@
 import { config } from "./config";
+import { rememberedBinanceSide, rememberBinanceSide, sendEthUsdt, type BinanceSide } from "./binance";
 import { bpsBetween, rangeFilter, snapshotIndicators, venueFeatures } from "./indicators";
 import type { Market } from "./market";
 import type { Model, ModelDecision, TradeState } from "./model";
@@ -38,6 +39,8 @@ export class Trader {
   private totals: Totals = emptyTotals();
   private jevPauseUntil = 0;
   private lastLeverage: number | null = null;
+  private binanceSide: BinanceSide | null = rememberedBinanceSide();
+  private binanceTail: Promise<void> = Promise.resolve();
   onPersist: ((book: PaperSleeve) => void) | null = null;
 
   constructor(
@@ -139,6 +142,7 @@ export class Trader {
         });
         timing.loopMs = Math.round(performance.now() - t0);
         this.emit(block, book, decision, null, false, timing);
+        this.followBinance(decision.intent, decision.bias);
         if (plan) this.enqueueQuote(block, decision, plan, book);
         else this.enqueueStandDown();
       } catch (e) {
@@ -156,6 +160,30 @@ export class Trader {
     } finally {
       this.busy = false;
     }
+  }
+
+  /** One Binance order per ETH position change. Holds send nothing. */
+  private followBinance(intent: "open" | "close" | "hold", bias: "long" | "short") {
+    if (!config.binanceAuto || this.market.coin !== "ETH") return;
+    let side: BinanceSide | null = null;
+    let reduce = false;
+    if (intent === "open") side = bias === "short" ? "SELL" : "BUY";
+    else if (intent === "close" && this.binanceSide) {
+      side = this.binanceSide === "BUY" ? "SELL" : "BUY";
+      reduce = true;
+    }
+    if (!side || (!reduce && side === this.binanceSide)) return;
+    const sent = side;
+    this.binanceSide = reduce ? null : sent;
+    this.binanceTail = this.binanceTail.then(async () => {
+      try {
+        console.log(await sendEthUsdt(sent, reduce));
+        rememberBinanceSide(reduce ? null : sent);
+      } catch (e) {
+        if (!reduce) this.binanceSide = rememberedBinanceSide();
+        console.error(`binance: ${(e as Error).message}`);
+      }
+    });
   }
 
   private enqueueQuote(block: number, decision: ModelDecision, plan: QuotePlan, book: Book) {

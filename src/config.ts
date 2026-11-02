@@ -63,6 +63,8 @@ export const config = {
   port: Number(env("PORT", "3000")),
   historySize: 1000,
   bankrollUsd: Number(env("BANKROLL_USD", "200")),
+  /** When true, an ETH open/close also sends 0.01 ETHUSDT on Binance futures. */
+  binanceAuto: env("BINANCE_AUTO") === "true",
 };
 
 export function hexKey(key: string): `0x${string}` {
