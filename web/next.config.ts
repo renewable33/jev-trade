@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
       { source: "/events", destination: `${bot}/events` },
       { source: "/tape", destination: `${bot}/tape` },
       { source: "/history", destination: `${bot}/history` },
+      { source: "/binance", destination: `${bot}/binance` },
+      { source: "/live", destination: `${bot}/live` },
     ];
   },
 };

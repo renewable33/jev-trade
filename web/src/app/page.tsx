@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Book from "@/components/Book/Book";
+import BinanceLive from "@/components/BinanceLive/BinanceLive";
 import DecisionPanel from "@/components/DecisionPanel/DecisionPanel";
 import Feed from "@/components/Feed/Feed";
 import FlowChart from "@/components/FlowChart/FlowChart";
@@ -121,6 +122,7 @@ export default function Page() {
         onNeedMoreTape={feed.loadTape}
         waiting={waiting}
       />
+      <BinanceLive api={API_URL} />
     </div>
   );
 }

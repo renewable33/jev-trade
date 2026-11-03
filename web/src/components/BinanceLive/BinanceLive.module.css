@@ -1,0 +1,75 @@
+.wrap {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.bar h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.bar span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.grid > div {
+  max-height: 180px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 8px 0 4px;
+}
+
+.grid h3 {
+  margin: 0 14px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.grid table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.grid th,
+.grid td {
+  text-align: left;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.grid th {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.grid td {
+  border-top: 1px solid var(--grid);
+}
+
+.long { color: var(--buy); font-weight: 700; }
+.short { color: var(--sell); font-weight: 700; }
+.empty { margin: 0 14px 8px; color: var(--muted); font-size: 12px; }
+
+@media (min-width: 900px) {
+  .grid { grid-template-columns: 1.1fr 1fr 1fr; }
+  .grid > div { border-top: 0; border-right: 1px solid var(--border); max-height: 220px; }
+}
